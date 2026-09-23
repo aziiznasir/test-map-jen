@@ -150,7 +150,7 @@
             });
           }
 
-          if (isVillageEnabled && z >= 16) {
+          if (isVillageEnabled && z >= 10) {
             data.village_labels.features.forEach(function(ft) {
               var ll = L.latLng(ft.geometry.coordinates[1], ft.geometry.coordinates[0]);
               if (b.contains(ll)) {
