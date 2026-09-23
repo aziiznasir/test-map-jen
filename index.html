@@ -127,7 +127,7 @@
         function updateFontSizes() {
           var z = mapObj.getZoom();
           var jz = z <= 10 ? 8.0 : z == 11 ? 9.5 : z == 12 ? 11.0 : z == 13 ? 12.5 : 14.5;
-          var vz = z <= 10 ? 7.0 : z == 11 ? 8.0 : z == 12 ? 9.0 : z == 13 ? 10.0 : 11.5;
+          var vz = z <= 9 ? 6.0 : z == 10 ? 6.5 : z == 11 ? 7.5 : z == 12 ? 8.5 : z == 13 ? 10.0 : 11.5;
           document.documentElement.style.setProperty('--jen-font-size', jz + 'pt');
           document.documentElement.style.setProperty('--village-font-size', vz + 'pt');
         }
@@ -150,7 +150,7 @@
             });
           }
 
-          if (isVillageEnabled && z >= 12) {
+          if (isVillageEnabled && z >= 10) {
             data.village_labels.features.forEach(function(ft) {
               var ll = L.latLng(ft.geometry.coordinates[1], ft.geometry.coordinates[0]);
               if (b.contains(ll)) {
