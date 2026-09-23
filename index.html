@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PHED JEN Live Map</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@3.0.2/dist/leaflet-search.min.css"/>
+  <style>
+    body, html { margin:0; padding:0; height:100%; width:100%; overflow:hidden; font-family:"Segoe UI", Tahoma, sans-serif; }
+    #map { height:100%; width:100%; background:#fff; }
+    #loader { position:fixed; top:0; left:0; width:100%; height:100%; background:#ffffff; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .spinner { width:45px; height:45px; border:5px solid #f3f3f3; border-top:5px solid #005a9e; border-radius:50%; animation:spin 0.8s linear infinite; }
+    @keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+    :root { --jen-font-size:8.5pt; --village-font-size:7.5pt; }
+    .jen-dyn-label { font-size:var(--jen-font-size); color:#d90429; font-weight:800; text-shadow:-1px -1px 2px #fff,1px -1px 2px #fff,-1px 1px 2px #fff,1px 1px 2px #fff; white-space:nowrap; pointer-events:none; }
+    .village-dyn-label { font-size:var(--village-font-size); color:#000; font-weight:700; text-shadow:1px 1px 1px #fff,-1px -1px 1px #fff; white-space:nowrap; pointer-events:none; }
+    .leaflet-control-layers { border:1px solid #c8c6c4!important; border-radius:6px!important; box-shadow:0 4px 12px rgba(0,0,0,0.15)!important; padding:8px 12px!important; font-size:12px!important; background:rgba(255,255,255,0.95)!important; }
+    .leaflet-control-layers-overlays label { margin-bottom:5px!important; display:flex; align-items:center; gap:6px; cursor:pointer; }
+    .leaflet-control-search .search-input { width:250px!important; font-family:"Segoe UI", Tahoma, sans-serif!important; font-size:12px!important; }
+    #arcgis-side-popup { position:absolute; top:140px; right:12px; width:360px; max-height:calc(100vh - 160px); background:#fff; z-index:1000; display:none; border-radius:6px; box-shadow:0 6px 20px rgba(0,0,0,0.25); border:1px solid #d2d0ce; overflow:hidden; flex-direction:column; }
+    #arcgis-side-popup-header { background-color:#005a9e; color:#fff; padding:9px 12px; font-size:12px; font-weight:600; display:flex; justify-content:space-between; align-items:center; }
+    #arcgis-side-popup-close { cursor:pointer; font-size:18px; line-height:1; font-weight:300; }
+    #arcgis-side-popup-body { padding:0; overflow-y:auto; font-size:11px; }
+  </style>
+</head>
+<body>
+  <div id="loader"><div class="spinner"></div><p style="margin-top:14px;color:#333;font-weight:600;">Loading Map Data...</p></div>
+  <div id="map"></div>
+  <div id="arcgis-side-popup">
+    <div id="arcgis-side-popup-header"><span id="arcgis-side-popup-title">Pop-up</span><span id="arcgis-side-popup-close">&times;</span></div>
+    <div id="arcgis-side-popup-body"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet-search@3.0.2/dist/leaflet-search.min.js"></script>
+  <script>
+    var mapObj = L.map('map', {preferCanvas: true, zoomSnap: 0.5});
+    var activeSelectedLayer = null;
+    var sidePopup = document.getElementById("arcgis-side-popup");
+    var sidePopupTitle = document.getElementById("arcgis-side-popup-title");
+    var sidePopupBody = document.getElementById("arcgis-side-popup-body");
+    var sidePopupClose = document.getElementById("arcgis-side-popup-close");
+    L.DomEvent.disableClickPropagation(sidePopup);
+    L.DomEvent.disableScrollPropagation(sidePopup);
+
+    function closeSidePopup() {
+      if (activeSelectedLayer) { jenLayer.resetStyle(activeSelectedLayer); activeSelectedLayer = null; }
+      sidePopup.style.display = "none";
+    }
+    sidePopupClose.addEventListener("click", closeSidePopup);
+    mapObj.on("click", closeSidePopup);
+
+    var jenLayer, villageLayer;
+    var actualJenGroup = L.layerGroup().addTo(mapObj);
+    var actualVillageGroup = L.layerGroup().addTo(mapObj);
+    var isJenEnabled = true, isVillageEnabled = true;
+
+    fetch('map_data.json')
+      .then(res => res.json())
+      .then(data => {
+        villageLayer = L.geoJSON(data.villages, {
+          style: { fillColor: '#fff', color: '#495057', weight: 1.0, fillOpacity: 0.05 },
+          interactive: false
+        }).addTo(mapObj);
+
+        jenLayer = L.geoJSON(data.jen, {
+          style: function(f) { return { fillColor: f.properties.fill_color, color: '#000814', weight: 1.2, fillOpacity: 0.35 }; },
+          onEachFeature: function(f, layer) {
+            layer.bindTooltip("<b>JEN Chowki:</b> " + f.properties.JEN_CHOWKI, {sticky: true});
+            layer.on('click', function(e) {
+              L.DomEvent.stopPropagation(e);
+              if (activeSelectedLayer && activeSelectedLayer !== layer) jenLayer.resetStyle(activeSelectedLayer);
+              activeSelectedLayer = layer;
+              layer.setStyle({ color: '#d90429', weight: 3.5, fillColor: '#fff', fillOpacity: 0.65 });
+              sidePopupTitle.innerText = f.properties.JEN_CHOWKI;
+              sidePopupBody.innerHTML = f.properties.popup_html;
+              sidePopup.style.display = 'flex';
+            });
+          }
+        }).addTo(mapObj);
+
+        mapObj.fitBounds(jenLayer.getBounds());
+
+        // Binding the actual active layer groups ensures both checkboxes start checked
+        var overlays = {
+          "Master Layer (Village Grid)": villageLayer,
+          "JEN Jurisdictions": jenLayer,
+          "JEN Labels (Red)": actualJenGroup,
+          "Village Labels (Black)": actualVillageGroup
+        };
+        var layerControl = L.control.layers(null, overlays, {collapsed: false, position: 'topright'}).addTo(mapObj);
+
+        mapObj.on('overlayadd', function(e) {
+          if (e.name === 'JEN Labels (Red)') { isJenEnabled = true; renderLabels(); }
+          if (e.name === 'Village Labels (Black)') { isVillageEnabled = true; renderLabels(); }
+        });
+        mapObj.on('overlayremove', function(e) {
+          if (e.name === 'JEN Labels (Red)') { isJenEnabled = false; actualJenGroup.clearLayers(); }
+          if (e.name === 'Village Labels (Black)') { isVillageEnabled = false; actualVillageGroup.clearLayers(); }
+        });
+
+        var searchControl = new L.Control.Search({
+          layer: jenLayer,
+          propertyName: 'JEN_CHOWKI',
+          initial: false,
+          casesensitive: false,
+          autoType: false,
+          minLength: 0,
+          collapsed: false,
+          zoom: null,
+          textPlaceholder: 'Type and select from options',
+          moveToLocation: function(latlng, title, map) { map.panTo(latlng); }
+        });
+        searchControl.on('search:locationfound', function(e) {
+          if (activeSelectedLayer && activeSelectedLayer !== e.layer) jenLayer.resetStyle(activeSelectedLayer);
+          activeSelectedLayer = e.layer;
+          e.layer.setStyle({ color: '#d90429', weight: 3.5, fillColor: '#fff', fillOpacity: 0.65 });
+          sidePopupTitle.innerText = e.layer.feature.properties.JEN_CHOWKI;
+          sidePopupBody.innerHTML = e.layer.feature.properties.popup_html;
+          sidePopup.style.display = 'flex';
+        });
+        mapObj.addControl(searchControl);
+        if (searchControl._input) {
+          searchControl._input.addEventListener('focus', function() { if (this.value === '') searchControl.searchText(''); });
+        }
+
+        function updateFontSizes() {
+          var z = mapObj.getZoom();
+          var jz = z <= 10 ? 8.0 : z == 11 ? 9.5 : z == 12 ? 11.0 : z == 13 ? 12.5 : 14.5;
+          var vz = z <= 10 ? 7.0 : z == 11 ? 8.0 : z == 12 ? 9.0 : z == 13 ? 10.0 : 11.5;
+          document.documentElement.style.setProperty('--jen-font-size', jz + 'pt');
+          document.documentElement.style.setProperty('--village-font-size', vz + 'pt');
+        }
+
+        function renderLabels() {
+          actualJenGroup.clearLayers();
+          actualVillageGroup.clearLayers();
+          var z = mapObj.getZoom();
+          var b = mapObj.getBounds();
+
+          if (isJenEnabled && z >= 10) {
+            data.jen_labels.features.forEach(function(ft) {
+              var ll = L.latLng(ft.geometry.coordinates[1], ft.geometry.coordinates[0]);
+              if (b.contains(ll)) {
+                actualJenGroup.addLayer(L.marker(ll, {
+                  icon: L.divIcon({ className: 'j-icon', html: "<span class='jen-dyn-label'>" + ft.properties.jname + "</span>", iconSize: null }),
+                  interactive: false
+                }));
+              }
+            });
+          }
+
+          if (isVillageEnabled && z >= 12) {
+            data.village_labels.features.forEach(function(ft) {
+              var ll = L.latLng(ft.geometry.coordinates[1], ft.geometry.coordinates[0]);
+              if (b.contains(ll)) {
+                actualVillageGroup.addLayer(L.marker(ll, {
+                  icon: L.divIcon({ className: 'v-icon', html: "<span class='village-dyn-label'>" + ft.properties.vname + "</span>", iconSize: null }),
+                  interactive: false
+                }));
+              }
+            });
+          }
+        }
+
+        mapObj.on('zoomend', function() { updateFontSizes(); renderLabels(); });
+        mapObj.on('moveend', renderLabels);
+        updateFontSizes();
+        renderLabels();
+
+        document.getElementById('loader').style.display = 'none';
+      });
+  </script>
+</body>
+</html>
